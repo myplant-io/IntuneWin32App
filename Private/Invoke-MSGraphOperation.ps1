@@ -109,14 +109,18 @@ function Invoke-MSGraphOperation {
         # Construct full URI
         $GraphURI = "https://graph.microsoft.com/$($APIVersion)/$($Resource)"
         Write-Verbose -Message "$($PSCmdlet.ParameterSetName) $($GraphURI)"        
-
+        $SecureClientSecret = ConvertTo-SecureString $ClientSecret -AsPlainText -Force
+        $ClientSecretCredential = New-Object System.Management.Automation.PSCredential($ClientId, $SecureClientSecret)
+        $AccessToken = (Get-MgContext).AccessToken
+        $authHeader = @{ Authorization = "Bearer $AccessToken" }
+        Connect-MgGraph -TenantId $TenantId -ClientSecretCredential $ClientSecretCredential -NoWelcome
         # Call Graph API and get JSON response
         do {
             try {
                 # Construct table of default request parameters
                 $RequestParams = @{
                     "Uri" = $GraphURI
-                    "Headers" = $Global:AuthenticationHeader
+                    "Headers" = $authHeader
                     "Method" = $PSCmdlet.ParameterSetName
                     "ErrorAction" = "Stop"
                     "Verbose" = $false
@@ -138,8 +142,8 @@ function Invoke-MSGraphOperation {
                 }
 
                 # Invoke Graph request
-                $GraphResponse = Invoke-RestMethod @RequestParams
-
+                $GraphResponse = Invoke-MgGraphRequest @RequestParams
+                # Write-Verbose -Message "Graph response: $($GraphResponse | ConvertTo-Json -Depth 1)"
                 # Handle paging in response
                 if ($GraphResponse.'@odata.nextLink' -ne $null) {
                     $GraphResponseList.AddRange($GraphResponse.value) | Out-Null

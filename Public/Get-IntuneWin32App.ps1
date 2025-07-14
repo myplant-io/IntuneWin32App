@@ -61,7 +61,9 @@ function Get-IntuneWin32App {
                     if ($Win32MobileApps -ne $null) {
                         foreach ($Win32MobileApp in $Win32MobileApps) {
                             $Win32App = Invoke-MSGraphOperation -Get -APIVersion "Beta" -Resource "deviceAppManagement/mobileApps/$($Win32MobileApp.id)"
+                            Write-Verbose -Message "$($Win32App)"
                             $Win32AppList.Add($Win32App)
+                            Write-Verbose -Message "$($Win32AppList)"
                         }
 
                         # Handle return value

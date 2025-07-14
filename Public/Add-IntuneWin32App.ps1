@@ -292,7 +292,6 @@ function Add-IntuneWin32App {
             # Attempt to gather all possible meta data from specified .intunewin file
             Write-Verbose -Message "Attempting to gather additional meta data from .intunewin file: $($FilePath)"
             $IntuneWinXMLMetaData = Get-IntuneWin32AppMetaData -FilePath $FilePath -ErrorAction Stop
-
             if ($IntuneWinXMLMetaData -ne $null) {
                 Write-Verbose -Message "Successfully gathered additional meta data from .intunewin file"
 
@@ -508,6 +507,8 @@ function Add-IntuneWin32App {
                 # Create the Win32 app
                 Write-Verbose -Message "Attempting to create Win32 app using constructed body converted to JSON content"
                 $Win32MobileAppRequest = Invoke-IntuneGraphRequest -APIVersion "Beta" -Resource "mobileApps" -Method "POST" -Body ($Win32AppBody | ConvertTo-Json)
+
+                # $Win32MobileAppRequest = Invoke-MgGraphRequest -Uri $GraphURI -Headers $authHeader -Method $Method -Body ($Win32AppBody | ConvertTo-Json) -ContentType $ContentType -ErrorAction Stop -Verbose:$false
                 if ($Win32MobileAppRequest.'@odata.type' -notlike "#microsoft.graph.win32LobApp") {
                     Write-Warning -Message "Failed to create Win32 app using constructed body. Passing converted body as JSON to output."
                     Write-Warning -Message ($Win32AppBody | ConvertTo-Json); break
@@ -531,6 +532,8 @@ function Add-IntuneWin32App {
                     # Create Content Version for the Win32 app
                     Write-Verbose -Message "Attempting to create contentVersions resource for the Win32 app"
                     $Win32MobileAppContentVersionRequest = Invoke-IntuneGraphRequest -APIVersion "Beta" -Resource "mobileApps/$($Win32MobileAppRequest.id)/microsoft.graph.win32LobApp/contentVersions" -Method "POST" -Body "{}"
+                    # $Win32MobileAppContentVersionRequest = Invoke-MgGraphRequest -Headers $authHeader -Method $Method -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$($Win32MobileAppRequest.id)/microsoft.graph.win32LobApp/contentVersions" -Body "{}"
+
                     if ([string]::IsNullOrEmpty($Win32MobileAppContentVersionRequest.id)) {
                         Write-Warning -Message "Failed to create contentVersions resource for Win32 app"
                     }
@@ -554,13 +557,15 @@ function Add-IntuneWin32App {
 
                             # Create the contentVersions files resource
                             $Win32MobileAppFileContentRequest = Invoke-IntuneGraphRequest -APIVersion "Beta" -Resource "mobileApps/$($Win32MobileAppRequest.id)/microsoft.graph.win32LobApp/contentVersions/$($Win32MobileAppContentVersionRequest.id)/files" -Method "POST" -Body ($Win32AppFileBody | ConvertTo-Json)
+                            # $Win32MobileAppFileContentRequest = Invoke-MgGraphRequest -Headers $authHeader -Method $Method -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$($Win32MobileAppRequest.id)/microsoft.graph.win32LobApp/contentVersions/$($Win32MobileAppContentVersionRequest.id)/files" -Body ($Win32AppFileBody | ConvertTo-Json)
+
                             if ([string]::IsNullOrEmpty($Win32MobileAppFileContentRequest.id)) {
                                 Write-Warning -Message "Failed to create Azure Storage blob for contentVersions/files resource for Win32 app"
                             }
                             else {
                                 # Wait for the Win32 app file content URI to be created
                                 Write-Verbose -Message "Waiting for Intune service to process contentVersions/files request"
-                                $FilesUri = "mobileApps/$($Win32MobileAppRequest.id)/microsoft.graph.win32LobApp/contentVersions/$($Win32MobileAppContentVersionRequest.id)/files/$($Win32MobileAppFileContentRequest.id)"
+                                $FilesUri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$($Win32MobileAppRequest.id)/microsoft.graph.win32LobApp/contentVersions/$($Win32MobileAppContentVersionRequest.id)/files/$($Win32MobileAppFileContentRequest.id)"
                                 $ContentVersionsFiles = Wait-IntuneWin32AppFileProcessing -Stage "AzureStorageUriRequest" -Resource $FilesUri
 
                                 # Upload .intunewin file to Azure Storage blob
@@ -611,6 +616,7 @@ function Add-IntuneWin32App {
                                 # Create file commit request
                                 $CommitResource = "mobileApps/$($Win32MobileAppRequest.id)/microsoft.graph.win32LobApp/contentVersions/$($Win32MobileAppContentVersionRequest.id)/files/$($Win32MobileAppFileContentRequest.id)/commit"
                                 $Win32AppFileCommitRequest = Invoke-IntuneGraphRequest -APIVersion "Beta" -Resource $CommitResource -Method "POST" -Body ($IntuneWinFileEncryptionInfo | ConvertTo-Json)
+                                # $Win32AppFileCommitRequest = Invoke-MgGraphRequest -Headers $authHeader -Method $Method -Uri "https://graph.microsoft.com/beta/deviceAppManagement/$($CommitResource)" -Body ($IntuneWinFileEncryptionInfo | ConvertTo-Json)
 
                                 # Wait for Intune service to process the commit file request
                                 Write-Verbose -Message "Waiting for Intune service to process the commit file request"
@@ -631,10 +637,12 @@ function Add-IntuneWin32App {
                                             "committedContentVersion" = $Win32MobileAppContentVersionRequest.id
                                         }
                                         $Win32AppFileCommitBodyRequest = Invoke-IntuneGraphRequest -APIVersion "Beta" -Resource "mobileApps/$($Win32MobileAppRequest.id)" -Method "PATCH" -Body ($Win32AppFileCommitBody | ConvertTo-Json)
+                                        # $Win32AppFileCommitBodyRequest = Invoke-MgGraphRequest -Headers $authHeader -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$($Win32MobileAppRequest.id)" -Method "PATCH" -Body ($Win32AppFileCommitBody | ConvertTo-Json)
 
                                         # Handle return output
                                         Write-Verbose -Message "Successfully created Win32 app and committed file content to Azure Storage blob"
                                         $Win32MobileAppRequest = Invoke-IntuneGraphRequest -APIVersion "Beta" -Resource "mobileApps/$($Win32MobileAppRequest.id)" -Method "GET"
+                                        # $Win32MobileAppRequest = Invoke-MgGraphRequest -Headers $authHeader -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$($Win32MobileAppRequest.id)" -Method "GET" 
                                         Write-Output -InputObject $Win32MobileAppRequest
                                     }
                                 }                                

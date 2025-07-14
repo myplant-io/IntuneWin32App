@@ -48,6 +48,11 @@ function Invoke-IntuneGraphRequest {
         [string]$ContentType = "application/json; charset=utf-8"
     )
     try {
+        $SecureClientSecret = ConvertTo-SecureString $ClientSecret -AsPlainText -Force
+        $ClientSecretCredential = New-Object System.Management.Automation.PSCredential($ClientId, $SecureClientSecret)
+        $AccessToken = (Get-MgContext).AccessToken
+        $authHeader = @{ Authorization = "Bearer $AccessToken" }
+        Connect-MgGraph -TenantId $TenantId -ClientSecretCredential $ClientSecretCredential -NoWelcome
         # Construct full URI
         $GraphURI = "https://graph.microsoft.com/$($APIVersion)/$($Route)/$($Resource)"
         Write-Verbose -Message "$($Method) $($GraphURI)"
@@ -55,16 +60,16 @@ function Invoke-IntuneGraphRequest {
         # Call Graph API and get JSON response
         switch ($Method) {
             "GET" {
-                $GraphResponse = Invoke-RestMethod -Uri $GraphURI -Headers $Global:AuthenticationHeader -Method $Method -ErrorAction Stop -Verbose:$false
+                $GraphResponse = Invoke-MgGraphRequest -Uri $GraphURI -Headers $authHeader -Method $Method -ErrorAction Stop -Verbose:$false
             }
             "POST" {
-                $GraphResponse = Invoke-RestMethod -Uri $GraphURI -Headers $Global:AuthenticationHeader -Method $Method -Body $Body -ContentType $ContentType -ErrorAction Stop -Verbose:$false
+                $GraphResponse = Invoke-MgGraphRequest -Uri $GraphURI -Headers $authHeader -Method $Method -Body $Body -ContentType $ContentType -ErrorAction Stop -Verbose:$false
             }
             "PATCH" {
-                $GraphResponse = Invoke-RestMethod -Uri $GraphURI -Headers $Global:AuthenticationHeader -Method $Method -Body $Body -ContentType $ContentType -ErrorAction Stop -Verbose:$false
+                $GraphResponse = Invoke-MgGraphRequest -Uri $GraphURI -Headers $authHeader -Method $Method -Body $Body -ContentType $ContentType -ErrorAction Stop -Verbose:$false
             }
             "DELETE" {
-                $GraphResponse = Invoke-RestMethod -Uri $GraphURI -Headers $Global:AuthenticationHeader -Method $Method -ErrorAction Stop -Verbose:$false
+                $GraphResponse = Invoke-MgGraphRequest -Uri $GraphURI -Headers $authHeader -Method $Method -ErrorAction Stop -Verbose:$false
             }
         }
 
@@ -111,12 +116,17 @@ function Invoke-IntuneGraphRequest {
                 Write-Warning -Message "Graph request failed with status code '$($HttpStatusCodeInteger) ($($ExceptionItem.Exception.Response.StatusCode))'. Error details: $($ResponseBody.ErrorCode) - $($ResponseBody.ErrorMessage)"
             }
             default {
-                # Construct new custom error record
-                $SystemException = New-Object -TypeName "System.Management.Automation.RuntimeException" -ArgumentList ("{0}: {1}" -f $ResponseBody.ErrorCode, $ResponseBody.ErrorMessage)
-                $ErrorRecord = New-Object -TypeName "System.Management.Automation.ErrorRecord" -ArgumentList @($SystemException, $ErrorID, [System.Management.Automation.ErrorCategory]::NotImplemented, [string]::Empty)
-
-                # Throw a terminating custom error record
-                $PSCmdlet.ThrowTerminatingError($ErrorRecord)
+                try {
+                    $ErrorDetails = $ExceptionItem.ErrorDetails.Message | ConvertFrom-Json
+                    $ResponseBody.ErrorMessage = $ErrorDetails.error.message
+                    $ResponseBody.ErrorCode = $ErrorDetails.error.code
+                }
+                catch {
+                    # Fall back to plain message
+                    $ResponseBody.ErrorMessage = $ExceptionItem.ErrorDetails.Message
+                    $ResponseBody.ErrorCode = "UnknownError"
+                    Write-Warning "Failed to parse error details as JSON. Raw message: $($ExceptionItem.ErrorDetails.Message)"
+                }
             }
         }
     }
